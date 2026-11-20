@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project user data and exported reports 
+dados.json
+extrato_financeiro.csv
