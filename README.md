@@ -4,14 +4,14 @@ Sistema de controle financeiro pessoal desenvolvido de forma incremental, evolui
 
 ---
 
-## 🚀 Funcionalidades Atuais (v2.0 - Fluxo de Caixa)
+## 🚀 Funcionalidades Atuais (v3.0 - Banco de Dados SQLite)
 
-- **Entradas e Saídas:** Registro completo de receitas e despesas com formatação automática de texto e validação de valores.
-- **Data Automática:** Carimbo automático da data no padrão brasileiro (`DD/MM/AAAA`).
-- **Resumo Consolidado:** Cálculo em tempo real do total de entradas, total de saídas e saldo atual.
-- **Extrato Cronológico e Relatórios:** Listagem ordenada por data, relatório filtrado apenas com despesas e exclusão de lançamentos por índice.
-- **Persistência e Exportação:** Salvamento local automático em `dados.json` e exportação de planilha (`extrato_financeiro.csv`) compatível com Excel.
-- **Arquitetura Modular:** Separação entre interface CLI (`main.py`), regras de negócio (`gerenciador.py`) e camada de persistência (`armazenamento.py`), com limpeza automática do terminal entre operações.
+- **Persistência em Banco Relacional:** Armazenamento estruturado em **SQLite** (`financas.db`) com criação automática de tabela e restrições de integridade (`PRIMARY KEY`, `AUTOINCREMENT`, `NOT NULL` e `CHECK`).
+- **Padrão Repository:** Isolamento completo das consultas SQL na camada de acesso a dados (`armazenamento.py`), desacoplando o banco das regras de negócio e da interface CLI.
+- **Entradas e Saídas:** Registro de receitas e despesas com formatação automática de texto, validação de valores e carimbo automático de data (armazenada em ISO `AAAA-MM-DD` para ordenação exata e exibida em `DD/MM/AAAA`).
+- **Resumo Consolidado via SQL:** Cálculo em tempo real do total de entradas, total de saídas e saldo atual utilizando funções de agregação (`SUM` e `COALESCE`).
+- **Extrato Cronológico e Relatórios:** Listagem ordenada diretamente pelo banco (`ORDER BY`), relatório filtrado apenas com despesas (`WHERE`) e exclusão permanente por **ID** único.
+- **Exportação para Planilha:** Geração de relatório (`extrato_financeiro.csv`) com IDs e formatação compatível com Excel.
 
 ---
 
@@ -20,9 +20,9 @@ Sistema de controle financeiro pessoal desenvolvido de forma incremental, evolui
 ```text
 rastreador-despesas-cli/
 ├── main.py             # Interface CLI, menus, validações e controle de tela
-├── gerenciador.py      # Regras de negócio, cálculos de saldo, filtros e ordenação
-├── armazenamento.py    # Persistência em JSON e exportação para CSV
-├── .gitignore          # Ignora dados locais (dados.json, .csv) e cache do Python
+├── gerenciador.py      # Regras de negócio e conversão de datas (ISO <-> BR)
+├── armazenamento.py    # Camada Repository: conexão SQLite, queries SQL e exportação CSV
+├── .gitignore          # Ignora bancos locais (*.db), relatórios (*.csv) e cache do Python
 └── README.md           # Documentação do projeto
 ```
 
@@ -32,7 +32,7 @@ rastreador-despesas-cli/
 
 - [x] **v1.0 (MVP):** CLI básico em Python com armazenamento em memória.
 - [x] **v2.0 (Fluxo de Caixa):** Entradas e saídas, data automática (`DD/MM/AAAA`), cálculo de saldo, extrato cronológico, persistência em JSON e exportação para `.csv`.
-- [ ] **v3.0 (Banco de Dados SQLite):** Migração da persistência para **SQLite** (`sqlite3`) utilizando o padrão Repository.
+- [x] **v3.0 (Banco de Dados SQLite):** Migração da persistência para **SQLite** (`sqlite3`) utilizando o padrão Repository.
 - [ ] **v3.1 (Relatórios Avançados):** Filtros SQL por mês/ano, categoria e intervalo de datas.
 - [ ] **v4.0 (Full-Stack Web & PostgreSQL):** Migração para **PostgreSQL**, API REST em **Node.js (Express)** e dashboard visual em **HTML5, CSS3 e JavaScript**.
 
@@ -40,10 +40,11 @@ rastreador-despesas-cli/
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **Linguagem:** Python 3 (módulos nativos `json`, `csv`, `datetime` e `os`)
-- **Persistência e Exportação Atual:** JSON e CSV
+- **Linguagem:** Python 3 (módulos nativos `sqlite3`, `csv`, `datetime` e `os`)
+- **Banco de Dados & Ferramentas:** SQLite (`financas.db`) e DB Browser for SQLite
+- **Arquitetura:** Modular em 3 camadas com Padrão Repository
 - **Versionamento:** Git & GitHub (Git Flow com *branches* de *feature* e *tags* de lançamento)
-- **Próximas etapas:** SQLite (`sqlite3`), PostgreSQL, Node.js (Express), HTML5, CSS3 e JavaScript
+- **Próximas etapas:** PostgreSQL, Node.js (Express), HTML5, CSS3 e JavaScript
 
 ---
 
