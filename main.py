@@ -7,15 +7,15 @@ e exibe extratos e relatórios financeiros.
 #Importação das funções
 
 import os
-from datetime import datetime
-from armazenamento import carregar_dados, exportar_para_csv
 from gerenciador import (
-    calcular_resumo,
-    lista_despesas_detalhadas,
-    obter_extrato_ordenado,
+    preparar_sistema,
     registrar_movimentacao,
-    remover_movimentacao,
+    obter_resumo,
+    extrato_completo,
+    relatorio_despesa,
+    remover_movimentacoes
 )
+from armazenamento import exportar_para_csv
 
 # Funções
 
@@ -41,29 +41,28 @@ def ler_valor_valido(mensagem):
         except ValueError:
             print("[Erro] Valor inválido. Digite apenas números (ex: 45,90 ou 45.90)")
 
-def obter_data_hoje_br():    
+def ler_inteiro_valido(mensagem):
     """
-    Retorna a data atual do sistema no formato brasileiro DD/MM/AAAA.
+    Não permite o usuário de digitar um número quebrado
     """
-    return datetime.now().strftime("%d/%m/%Y")
-
-def formatar_moeda(valor):
-    """
-    Formata um float para padrão visual brasileiro (ex: 1250.50 para '1.250,50')
-    """
-    return f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    while True:
+        try:
+            return int(input(mensagem).strip())
+        except ValueError:
+            print("[Erro] Digite apenas um número inteiro válido")
 
 def iniciar_sistema ():
     """
     Carregar os dados e executa o loop principal do menu CLI
     """
-    movimentacoes = carregar_dados()
+    preparar_sistema()
 
     while True:
 
         limpar_tela()
 
-        print("\n=== RASTREADOR DE DESPESA & FLUXO DE CAIXA v2.0 ===")
+        print("\n=== RASTREADOR DE DESPESA & FLUXO DE CAIXA v3.0 ===")
+        print("\n---      Persistência: SQLite (financas.db)     ---")
         print()
         print("1 - Registrar Entrada")
         print("2 - Registrar Despesa")
@@ -78,6 +77,8 @@ def iniciar_sistema ():
 
         # Cadastro unificado para Entradas (1) e Despesas (2)
         if opcao in ("1", "2"):
+
+            limpar_tela()
 
             tipo = "entrada" if opcao == "1" else "saida"
             titulo_acao = "ENTRADA" if tipo == "entrada" else "DESPESA"
@@ -95,44 +96,48 @@ def iniciar_sistema ():
                 continue
 
             valor = ler_valor_valido("Valor (R$): ")
-            data_br = obter_data_hoje_br()
 
-            registrar_movimentacao(movimentacoes, tipo, descricao, categoria, valor, data_br)
+            data_registrada = registrar_movimentacao(tipo, descricao, categoria, valor)
 
-            print(f"\n[SUCESSO] {titulo_acao.capitalize()} registrada na data {data_br}")
+            print(f"\n[SUCESSO] {titulo_acao.capitalize()} registrada no banco de dados na data de {data_registrada}")
 
         # Exibição do extrato consolidado em ordem cronológica 
         elif opcao == "3":
 
-            entradas, saidas, saldo = calcular_resumo(movimentacoes)
-            extrato = obter_extrato_ordenado(movimentacoes)
+            limpar_tela()
 
-            print("\n" + "=" *40)
-            print("EXTRATO FINANCEIRO".center(40))
-            print("=" *40)
+            entradas, saidas, saldo = obter_resumo()
+            extrato = extrato_completo()
+
+            print("\n" + "=" *60)
+            print("EXTRATO FINANCEIRO".center(60))
+            print("=" *60)
             print()
-            print(f"Total De Entradas: R$ {formatar_moeda(entradas)}")
-            print(f"Total De Saídas:   R$ {formatar_moeda(saidas)}")
-            print(f"Saldo Atual:       R$ {formatar_moeda(saldo)}")
-            print("\n" + "-" *30)
+            print(f"Total De Entradas: R$ {entradas:.2f}")
+            print(f"Total De Saídas:   R$ {saidas:.2f}")
+            print(f"Saldo Atual:       R$ {saldo:.2f}")
+            print("\n" + "-" *60)
 
             if not extrato:
-                print("Nenhuma movimentação registrada!")
+                print("Nenhuma movimentação registrada no banco de dados!")
 
             else:
-                for indice, item in enumerate(extrato, start=1):
+                print("\nEXTRATO CRONOLÓGICO:")
+                for item in extrato:
                     sinal = "[+]" if item["tipo"] == "entrada" else "[-]"
                     print()
                     print (
-                        f"{indice}. {item['data']} | {sinal} {item['descricao']} "
-                        f"({item['categoria']}) - R$ {formatar_moeda(item['valor'])}"
+                        f"[ID {item['id']}] {item['data_br']} | {sinal} "
+                        f"{item['descricao']} ({item['categoria']}) - R$ {item['valor']:.2f}"
                     )
-            print("\n" + "=" *30)
+            print("\n" + "=" *60)
 
         # Relatório filtrado apenas com gastos
         elif opcao == "4":
 
-            despesas, total_gasto = lista_despesas_detalhadas(movimentacoes)
+            limpar_tela()
+
+            despesas, total_gasto = relatorio_despesa()
 
             print("\n--- Relatório De Despesas ---")
 
@@ -140,20 +145,25 @@ def iniciar_sistema ():
                 print("\nNenhuma despesa cadastrada")
             
             else:
-                for indice, item in enumerate(despesas, start=1):
+                for item in despesas:
                     print()
                     print(
-                        f"{indice}. {item['data']} | {item['descricao']} "
-                        f"({item['categoria']}) - R$ {formatar_moeda(item['valor'])}"
+                        f"[ID {item ['id']}] {item['data_br']} | "
+                        f"{item['descricao']} ({item['categoria']}) - R$ {item['valor']:.2f}"
                     )
 
-                print("\n" + "-" *30)
-                print(f"TOTAL DE GASTO: R$ {formatar_moeda(total_gasto)}")
+                print("\n" + "-" *60)
+                print()
+                print(f"TOTAL DE GASTO: R$ {total_gasto:.2f}")
 
         # Remoção de item específico por índice visual
         elif opcao == "5":
 
-            if not movimentacoes:
+            limpar_tela()
+
+            extrato = extrato_completo()
+
+            if not extrato:
                 print("\nNenhum lançamento disponível para remover!")
                 input("\nPressione Enter para voltar ao menu")
                 continue
@@ -161,44 +171,36 @@ def iniciar_sistema ():
             print("\n--- REMOVER LANÇAMENTO ---")
             print()
 
-            for indice, item in enumerate(movimentacoes, start=1):
+            for item in extrato:
                 print(
-                    f"{indice}. {item['data']} | {item['descricao']} "
-                    f"- R$ {formatar_moeda(item['valor'])}"
+                    f"[ID {item['id']}] {item['data_br']} | "
+                    f"{item['descricao']} - R$ {item['valor']:.2f}"
                 )
 
-            try:
-                numero = int(input("\nDigite o número para remover (0 para cancelar): "))
-                print()
-
-                if numero == 0:
-                    print("Operação cancelada")
-
-                else:
-                    sucesso, removido = remover_movimentacao(movimentacoes, numero)
-
-                    if sucesso:
-                        print(f"[Sucesso] '{removido['descricao']}' removido!")
+                id_alvo = ler_inteiro_valido("\nDigite o ID do lançamento para excluir (Caso deseje cancelar, aperte 0):") 
+                
+                if id_alvo != 0:
+                    if remover_movimentacoes(id_alvo):
+                        print("\nRegistro ID {id_alvo} removido permanentemente do banco de dados!")
 
                     else:
-                        print("[Erro] Número inválido.")
-
-            except ValueError:
-
-                print("[Erro] Digite apenas o número correspondente ao item.")
+                        print("\nNenhum registro encontrado com o ID {id_alvo}.")
 
         # Geração do arquivo CSV para abertura no Excel 
         elif opcao == "6":
 
-            if not movimentacoes:
+            limpar_tela()
+
+            extrato = extrato_completo()
+
+            if not extrato:
                 print("\nNão há dados para exportar!")
                 input("\nPressione Enter para voltar ao menu")
                 continue
 
-            extrato_ordenado = obter_extrato_ordenado(movimentacoes)
-            exportar_para_csv(extrato_ordenado)
+            exportar_para_csv(extrato)
 
-            print("[Sucesso] Arquivo 'extrato_financeiro.csv' gerado na pasta do projeto!")
+            print("[Sucesso] Arquivo 'extrato_financeiro.csv' gerado!")
 
         # Encerramento do loop principal
         elif opcao == "7":
@@ -213,7 +215,7 @@ def iniciar_sistema ():
             print("[Erro] Digite uma opção válida! Escolha um número de 1 a 7.")
 
         # Pausa a execução após qualquer opção (Exceto '7', que utiliza o break)
-        input("\nPressione Enter para voltar ao menu")
+        input("\nPressione Enter para voltar ao menu ")
 
 # Garante que o menu só seja executado quando este arquivo for rodado diretamente
 if __name__ == "__main__":

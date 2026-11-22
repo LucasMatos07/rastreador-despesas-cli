@@ -1,67 +1,135 @@
 
 """
 Módulo de Armazenamento (Persistência de Dados)
-Responsável por ler e gravar as moviemntações financeiras em arquivos JSON
+Responsável por ler e gravar as moviemntações financeiras no banco de dados SQLite
 e exportar relatórios em formato CSV.
 """
 
 # Importação das bibliotecas necessárias
 
-import json
+import sqlite3
 import csv
-import os
 
 """
-Import json: usado para converter dados de python em formato JSON e vice-versa
+Import sqlite3: Usado para chamar e registrar as movimentações no banco de dados
 Import csv: usado para ler e escrever arquivos CSV 
-Import os: usado para interagir com o sistema operacional, como verificar a existência de arquivos
-antes de tentar lê-los ou gravá-los.
 """
 
-# Nome padrão do arquivo onde os dados serão persistidos
+# Nome padrão do banco de dados onde os dados serão persistidos
 
-ARQUIVOS_DADOS = "dados.json"
+NOME_BANCO = "financas.db"
 
 # Funções
 
-def carregar_dados():
+def conectar():
     """
-    Lê os dados .json e retorna a lista de movimentações.
-    Se o arquivo ainda não existir ou estiver inválido, retorna uma lista vazia.
+    Abre a conexão com o arquivo do banco SQLite.
     """
-    if not os.path.exists(ARQUIVOS_DADOS):
-        return []
+    conexao = sqlite3.connect(NOME_BANCO)
+    # Permite acessar colunas pelo nome (ex: linha["valor"]) além do índice 
+    conexao.row_factory =   sqlite3.Row
+    return conexao
 
-    try:
-        with open(ARQUIVOS_DADOS, mode="r", encoding="utf-8") as arquivo: 
-            return json.load(arquivo)
-    except (json.JSONDecodeError, OSError):
-        print("\n[Aviso] Arquivo de dados vazio ou inválido. Iniciado lista vazia.")
+def inicializar_banco(): 
+    """
+    Cria a tabela movimentações caso ela ainda não exista. 
+    """
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS movimentacoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'saida')),
+                descricao TEXT NOT NULL,
+                categoria TEXT NOT NULL,
+                valor REAL NOT NULL CHECK (valor > 0),
+                data TEXT NOT NULL
+            )
+        """)
+        conn.commit()
 
-def salvar_dados(lista_movimentacoes):
+def inserir_movimentacoes(tipo, descricao, categoria, valor, data_iso):
     """
-    Grava a lista completa de movimentações no arquivo dados.json. 
+    Insere um novo lançamento no banco de dados.
     """
-    with open(ARQUIVOS_DADOS, mode="w", encoding="utf-8") as arquivos:
-        json.dump(lista_movimentacoes, arquivos, indent=4, ensure_ascii=False)
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO movimentacoes (tipo, descricao, categoria, valor, data)
+            VALUES (?, ?, ?, ?, ?)
+        """, (tipo, descricao, categoria, valor, data_iso))
+        conn.commit()
+
+    
+def listar_todas_movimentacoes():
+    """
+    Retorna todas as movimentações ordenadas cronologicamente.
+    """
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, tipo, descricao, categoria, valor, data
+            FROM movimentacoes
+            ORDER BY data ASC, id ASC
+        """)
+        return [dict(linha) for linha in cursor.fetchall()]
+
+def listar_apenas_despesas():
+    """
+    Filtra diretamente no SQL apenas os registros do tipo 'saida'
+    """
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, tipo, descricao, categoria, valor, data
+            FROM movimentacoes
+            WHERE tipo = 'saida'
+            ORDER BY data ASC, id ASC
+        """)
+        return [dict(linha) for linha in cursor.fetchall()]
+
+def calcular_resumo_banco():
+    """
+    Usa funções de agregação do SQL (SUM e COALESCE) para calcular os totais.
+    """
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                COALESCE(SUM(CASE WHEN tipo = 'entrada' THEN valor ELSE 0 END), 0) AS total_entradas,
+                COALESCE(SUM(CASE WHEN tipo = 'saida' THEN valor ELSE 0 END), 0) AS  total_saidas
+            FROM movimentacoes 
+        """)
+
+        resultado = cursor.fetchone()
+        entrada = resultado["total_entradas"]
+        saidas = resultado["total_saidas"]
+        saldo = entrada - saidas
+        return saldo, entrada, saidas
+
+def deletar_movimentacoes_por_id(id_registro):
+    """
+    Remove uma linha pelo ID único e retorna True se algum registro foi apagado.
+    """
+    with conectar() as conn:
+        cursor = conn.cursor()
+        cursor.execute(" DELETE FROM movimentacoes WHERE id = ?", (id_registro,))
+        conn.commit()
+        return cursor.rowcount > 0
 
 def exportar_para_csv(lista_movimentacoes, nome_arquivo="extrato_financeiro.csv"):
     """
-    Exporta a lista de movimentações para um arquivo CSV compatível com Excel.
+    Exporta a lista de movimentações para CSV compatível com Excel
     """
-    with open(nome_arquivo, mode="w", encoding="utf-8-sig", newline="") as arquivo:
+    with open(nome_arquivo, mode="w", newline="", encoding="utf-8-sig") as arquivo:
         escritor = csv.writer(arquivo, delimiter=";")
-
-        # Escreve a primeira linha (cabeçario das colunas)
-        escritor.writerow(["Data", "Tipo", "Descrição", "Categoria", "Valor"])
-
-        # Percorre cada movimentação e escreve uma linha na planilha
+        escritor.writerow(["ID", "Data", "Tipo", "Descricao", "Categoria", "Valor"])
         for item in lista_movimentacoes:
-            valor_formatado = f"{item['valor']:.2f}".replace(".", ",")
             escritor.writerow([
-                item["data"],
-                item["tipo"].capitalize(),
+                item["id"],
+                item["data_br"],
+                item["tipo"],
                 item["descricao"],
                 item["categoria"],
-                valor_formatado,
+                f"{item['valor']:.2f}".replace(".", ",")
             ])

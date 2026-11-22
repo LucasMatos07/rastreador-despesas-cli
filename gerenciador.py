@@ -7,72 +7,65 @@ cronologicamente, filtrar despesas e remover lançamentos.
 # Importação das funções 
 
 from datetime import datetime
-from armazenamento import salvar_dados
+from armazenamento import (
+    inicializar_banco,
+    inserir_movimentacoes,
+    listar_todas_movimentacoes,
+    listar_apenas_despesas,
+    calcular_resumo_banco,
+    deletar_movimentacoes_por_id
+)
 
 # Funções
 
-def registrar_movimentacao(lista, tipo, descricao, categoria, valor, data_br):
+def preparar_sistema():
     """
-    Cria um dicionário representando a movimentação, adiciona à lista
-    e persiste imediatamente no arquivo JSON.
+    Garante que o banco de dados e a tabela existam ao iniciar o app.
     """
-    nova_movimentacao = {
-        "tipo": tipo,
-        "descricao": descricao,
-        "categoria": categoria,
-        "valor": valor, 
-        "data": data_br,
-    }
-    lista.append(nova_movimentacao)
-    salvar_dados(lista)
+    inicializar_banco()
 
-def calcular_resumo(lista):
+def conversao_data(data_iso):
     """
-    Calcular o total de entrada, total de saída e o saldo atual.
-    Retorna uma tupla: (total_entrada, total_saida, saldo).
+    Converte a data ISO '2026-11-21' para '21-11-2026'
     """
-    total_entradas = sum (
-        item["valor"] for item in lista if item["tipo"] == "entrada"
-    )
-    total_saidas = sum (
-        item["valor"] for item in lista if item["tipo"] == "saida"
-    )
-    saldo = total_entradas - total_saidas
-    return total_entradas, total_saidas, saldo
+    return datetime.strptime(data_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
 
-def obter_extrato_ordenado(lista):
+def registrar_movimentacao(tipo, descricao, categoria, valor):
     """
-    Retorna uma nova lista com todas as movimentações ordenadas
-    cronologicamente pela data no formato brasileiro (DD/MM/AAAA).
+    Captura a data atual em formato ISO e envia para o banco de dados
     """
-    return sorted(
-        lista,
-        key=lambda item: datetime.strptime(item["data"], "%d/%m/%Y"),
-    )
+    data_iso = datetime.now().strftime("%Y-%m-%d")
+    inserir_movimentacoes(tipo, descricao, categoria, valor, data_iso)
+    return conversao_data(data_iso)
 
-def lista_despesas_detalhadas(lista):
+def obter_resumo():
     """
-    Filtra apenas as movimentações do tipo 'saída', ordena por data
-    e calcula o valor total de gasto.
-    Retorna uma tupla: (despesas_ordenadas, total_gastos). 
+    Retorna o total de entrada, saída e saldo
     """
-    despesas = [item for item in lista if item["tipo"] == "saida"]
-    despesas_ordenadas = obter_extrato_ordenado(despesas)
-    total_gasto = sum(item["valor"] for item in despesas_ordenadas)
-    return despesas_ordenadas, total_gasto
+    return calcular_resumo_banco()
 
-def remover_movimentacao(lista, indice_usuario):
+def extrato_completo():
     """
-    Remove um lançamento com base no número exibido ao usuário (iniciando em 1)
-    e atualiza o arquivo JSON.
-    Retorna uma tupla: (sucesso: bool, item_removido: dict | None).
+    Busca do banco de dados o extrato completo 
     """
-    # Converte o número visual (1,2,3,...) para o índice real do Python (0,1,2,...)
-    indice_real = indice_usuario - 1
+    registro = listar_todas_movimentacoes()
+    for item in registro:
+        item["data_br"] = conversao_data(item["data"])
+    return registro
 
-    if 0 <= indice_real < len(lista):
-        item_removido = lista.pop(indice_real)
-        salvar_dados(lista)
-        return True, item_removido
+def relatorio_despesa():
+    """
+    Busca apenas a despesa no banco de dados e calcula o total gasto
+    """
+    despesa = listar_apenas_despesas()
+    total = 0.0
+    for item in despesa:
+        item["data_br"] = conversao_data(item["data"])
+        total += item["valor"]
+    return despesa, total
 
-    return False, None 
+def remover_movimentacoes(id_registro):
+    """
+    Solicita a exclusão através do ID único do banco de dodos
+    """
+    return deletar_movimentacoes_por_id(id_registro)
